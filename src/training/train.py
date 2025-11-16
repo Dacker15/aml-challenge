@@ -6,7 +6,6 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.common.plots import get_training_plot
 from src.training.mixup import mixup_data
 from src.training.model import MLP
 from src.testing.metrics import mrr2
@@ -41,7 +40,6 @@ def train_model(
     ACCUMULATION_STEPS = parameters.get("ACCUMULATION_STEPS", 1)
 
     MODEL_PATH = parameters.get("MODEL_PATH", "best_model.pth")
-    TRAINING_PLOT_PATH = parameters.get("TRAINING_PLOT_PATH", "training_plot.png")
 
     criterion = nn.CrossEntropyLoss(label_smoothing=LABEL_SMOOTHING)
     optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
@@ -150,11 +148,4 @@ def train_model(
             )
             break
 
-    get_training_plot(
-        all_train_loss,
-        all_val_loss,
-        all_val_mrr,
-        TRAINING_PLOT_PATH,
-    )
-
-    return model
+    return model, all_train_loss, all_val_loss, all_val_mrr

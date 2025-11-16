@@ -6,6 +6,7 @@ from pathlib import Path
 from torch.utils.data import TensorDataset, DataLoader
 
 from src.common.device import get_device
+from src.common.plots import get_training_plot
 from src.testing.submission import generate_submission
 from src.training.data import (
     load_data,
@@ -141,13 +142,20 @@ def main():
     ).to(DEVICE)
 
     # Start training
-    model = train_model(
+    model, all_train_loss, all_val_loss, all_val_mrr = train_model(
         model=model,
         train_loader=train_loader,
         val_loader=val_loader,
         y_val_unique=y_val_unique,
         gt_indices_val=inverse_indices,
         parameters=config_dict,
+    )
+
+    get_training_plot(
+        all_train_loss,
+        all_val_loss,
+        all_val_mrr,
+        TRAINING_PLOT_PATH,
     )
 
     # Save the trained model
