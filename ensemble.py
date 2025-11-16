@@ -61,13 +61,6 @@ def main():
     for key, value in config_dict.items():
         print(f"{key}: {value}")
 
-    print("\nVariations for Ensemble:")
-    for idx, variation in enumerate(emsemble_variations, start=1):
-        print(f"Variation {idx}:")
-        for key, value in variation.items():
-            print(f"{key}: {value}")
-        print("-----")
-
     # Create experiment directory if it doesn't exist
     Path(EXPERIMENT_DIR).mkdir(parents=True, exist_ok=True)
 
@@ -92,11 +85,14 @@ def main():
     histories = []
 
     for idx, variation in enumerate(emsemble_variations, start=1):
-        print(f"\nTraining model {idx} for Ensemble")
         # Update config with variation
+        print(f"\nApplying variation for model #{idx}:")
         for key, value in variation.items():
             config_dict[key] = value
+            print(f"{key}: {value}")
         config_dict["MODEL_PATH"] = f"{EXPERIMENT_DIR}/mlp_model_{idx}.pth"
+
+        print(f"\nTraining model #{idx} for Ensemble")
 
         train_mask, val_mask = create_image_based_split(
             train_captions_path, len(X_data)
@@ -145,6 +141,7 @@ def main():
 
         model.load_state_dict(torch.load(config_dict["MODEL_PATH"]))
 
+        best_mrr = max(all_val_mrr)  # Epoch with best MRR
         models.append(model)
         histories.append(
             {
@@ -153,13 +150,17 @@ def main():
                 "val_mrr": all_val_mrr,
             }
         )
-        performances.append(all_val_mrr.index(max(all_val_mrr)))  # Epoch with best MRR
+        performances.append(best_mrr)
+        print(
+            f"✓ Model #{idx} training completed and saved to: {config_dict['MODEL_PATH']}"
+        )
+        print(f"  Best Validation MRR: {best_mrr:.4f}")
 
     print("\nEnsemble training completed.")
-    print(f"  Mean:   {np.mean(performances):.6f}")
-    print(f"  Std:    {np.std(performances):.6f}")
-    print(f"  Min:    {np.min(performances):.6f}")
-    print(f"  Max:    {np.max(performances):.6f}")
+    print(f"  Mean:   {np.mean(performances):.4f}")
+    print(f"  Std:    {np.std(performances):.4f}")
+    print(f"  Min:    {np.min(performances):.4f}")
+    print(f"  Max:    {np.max(performances):.4f}")
 
     # Save ensemble
     ensemble_data = {
@@ -171,6 +172,7 @@ def main():
     torch.save(ensemble_data, ENSEMBLE_PATH)
     print(f"\n✓ Ensemble saved to: {ENSEMBLE_PATH}")
 
+    # Evaluate ensemble on validation set
     ensemble = Ensemble(models=models)
     train_mask, val_mask = create_image_based_split(
         train_captions_path,
@@ -178,12 +180,13 @@ def main():
     )
     ensemble_pred = ensemble.predict(X_val, device=DEVICE)
 
-    # Normalize
+    # Normalize embeddings for MRR computation
     ensemble_pred_normalized = F.normalize(ensemble_pred, p=2, dim=-1)
     y_val_normalized = F.normalize(y_val, p=2, dim=-1)
     targets = torch.arange(len(y_val))
     ensemble_mrr = mrr(ensemble_pred_normalized, y_val_normalized, targets)
 
+    # Print ensemble performance
     mean_individual = np.mean(performances)
     improvement = ensemble_mrr - mean_individual
     print(f"Mean individual MRR: {mean_individual:.6f}")
