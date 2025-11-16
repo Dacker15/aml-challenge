@@ -7,7 +7,7 @@ from pathlib import Path
 from torch.utils.data import TensorDataset, DataLoader
 
 from src.common.device import get_device
-from src.testing.metrics import mrr2
+from src.testing.metrics import mrr
 from src.testing.submission import generate_submission
 from src.training.data import load_data, prepare_train_data, create_image_based_split
 from src.training.ensemble import Ensemble
@@ -20,7 +20,6 @@ EXPERIMENT_INFO_PATH = f"{EXPERIMENT_DIR}/info.txt"
 EXPERIMENT_SUBMISSION_PATH = f"{EXPERIMENT_DIR}/submission.csv"
 MODEL_PATH = f"{EXPERIMENT_DIR}/mlp.pth"
 ENSEMBLE_PATH = f"{EXPERIMENT_DIR}/ensemble.pth"
-TRAINING_PLOT_PATH = f"{EXPERIMENT_DIR}/training_plots.png"
 
 
 def main():
@@ -36,7 +35,7 @@ def main():
         "BATCH_SIZE": BATCH_SIZE,
         "LR": 0.0001,
         "DROPOUT": 0.3,
-        "WEIGHT_DECAY": 1e-4,
+        "WEIGHT_DECAY": 1e-5,
         "LABEL_SMOOTHING": 0.1,
         "TEMPERATURE": 0.02,
         "NUM_LAYERS": 3,
@@ -46,10 +45,8 @@ def main():
         "ACCUMULATION_STEPS": ACCUMULATION_STEPS,
         "VIRTUAL_BATCH_SIZE": VIRTUAL_BATCH_SIZE,
         "DEVICE": str(DEVICE),
-        "ORIGINAL_DATASET_WEIGHT": 10.0,
-        "MIXUP_ALPHA": 0.2,
         "MODEL_PATH": MODEL_PATH,
-        "TRAINING_PLOT_PATH": TRAINING_PLOT_PATH,
+        "USE_ADAM": True,
     }
 
     emsemble_variations = [
@@ -185,7 +182,7 @@ def main():
     ensemble_pred_normalized = F.normalize(ensemble_pred, p=2, dim=-1)
     y_val_normalized = F.normalize(y_val, p=2, dim=-1)
     targets = torch.arange(len(y_val))
-    ensemble_mrr = mrr2(ensemble_pred_normalized, y_val_normalized, targets)
+    ensemble_mrr = mrr(ensemble_pred_normalized, y_val_normalized, targets)
 
     mean_individual = np.mean(performances)
     improvement = ensemble_mrr - mean_individual

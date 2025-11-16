@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from src.training.mixup import mixup_data
 from src.training.model import MLP
-from src.testing.metrics import mrr2
+from src.testing.metrics import mrr
 
 
 def train_model(
@@ -41,8 +41,13 @@ def train_model(
 
     MODEL_PATH = parameters.get("MODEL_PATH", "best_model.pth")
 
+    USE_ADAM = parameters.get("USE_ADAM", False)
+
     criterion = nn.CrossEntropyLoss(label_smoothing=LABEL_SMOOTHING)
-    optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    if USE_ADAM:
+        optimizer = optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    else:
+        optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=(EPOCHS * len(train_loader)) // ACCUMULATION_STEPS
     )
@@ -127,7 +132,7 @@ def train_model(
 
             # Compute MRR over the entire validation set
             epoch_val_predictions = torch.cat(epoch_val_predictions, dim=0)
-            epoch_mrr = mrr2(epoch_val_predictions, y_val_unique, gt_indices_val)
+            epoch_mrr = mrr(epoch_val_predictions, y_val_unique, gt_indices_val)
             all_val_mrr.append(epoch_mrr)
 
         print(

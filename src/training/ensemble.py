@@ -2,7 +2,7 @@ import torch
 
 
 class Ensemble:
-    """Wrapper per ensemble di modelli"""
+    """Wrapper for ensemble of models"""
 
     def __init__(self, models):
         self.models = models
@@ -10,7 +10,7 @@ class Ensemble:
             model.eval()
 
     def predict(self, x, device="cuda", batch_size=1024):
-        """Predizione con batching per gestire grandi dataset"""
+        """Prediction with batching to handle large datasets"""
         n_samples = len(x)
         all_ensemble_preds = []
 
@@ -25,11 +25,11 @@ class Ensemble:
                     pred = model(x_batch.to(device))
                     batch_preds.append(pred)
 
-            # Media delle predizioni
+            # Average predictions from all models in the ensemble
             ensemble_pred = torch.stack(batch_preds).mean(dim=0)
             all_ensemble_preds.append(ensemble_pred.cpu())
 
-        # Concatena tutti i batch
+        # Concatenate all batches
         final_pred = torch.cat(all_ensemble_preds, dim=0)
 
         return final_pred
