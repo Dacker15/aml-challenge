@@ -9,5 +9,8 @@ wheels/
 # Virtual environments
 .venv
 
-# Dataset
+# Dataset folder
 data
+
+# Results folder
+experiments
