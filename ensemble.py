@@ -7,7 +7,7 @@ from pathlib import Path
 from torch.utils.data import TensorDataset, DataLoader
 
 from src.common.device import get_device
-from src.testing.metrics import mrr
+from src.testing.metrics import mrr_batch_based
 from src.testing.submission import generate_submission
 from src.training.data import load_data, prepare_train_data, create_image_based_split
 from src.training.ensemble import Ensemble
@@ -34,7 +34,7 @@ def main():
         "EPOCHS": 20,
         "BATCH_SIZE": BATCH_SIZE,
         "LR": 0.0001,
-        "DROPOUT": 0.3,
+        "DROPOUT": 0.5,
         "WEIGHT_DECAY": 1e-5,
         "LABEL_SMOOTHING": 0.1,
         "TEMPERATURE": 0.02,
@@ -48,9 +48,11 @@ def main():
         "DEVICE": str(DEVICE),
         "MODEL_PATH": MODEL_PATH,
         "USE_ADAM": True,
+        "USE_INPUT_NORMALIZATION": True,
+        "USE_BATCH_MRR": True,
     }
 
-    emsemble_variations = [
+    ensemble_variations = [
         {"NUM_LAYERS": 3, "DROPOUT": 0.5, "LR": 0.0001, "TEMPERATURE": 0.020},
         {"NUM_LAYERS": 3, "DROPOUT": 0.48, "LR": 0.00009, "TEMPERATURE": 0.018},
         {"NUM_LAYERS": 4, "DROPOUT": 0.5, "LR": 0.0001, "TEMPERATURE": 0.020},
@@ -81,11 +83,20 @@ def main():
     train_data = load_data(train_data_path)
     X_data, y_data = prepare_train_data(train_data)
 
+    train_mask, val_mask = create_image_based_split(
+        train_captions_path, len(X_data), train_ratio=0.9, random_seed=RANDOM_SEED
+    )
+    X_train, y_train = X_data[train_mask], y_data[train_mask]
+    X_val, y_val = X_data[val_mask], y_data[val_mask]
+
+    y_val_norm = F.normalize(y_val.to(DEVICE), p=2, dim=-1)
+    targets = torch.arange(len(y_val)).to(DEVICE)
+
     models = []
     performances = []
     histories = []
 
-    for idx, variation in enumerate(emsemble_variations, start=1):
+    for idx, variation in enumerate(ensemble_variations, start=1):
         # Update config with variation
         print(f"\nApplying variation for model #{idx}:")
         for key, value in variation.items():
@@ -94,12 +105,6 @@ def main():
         config_dict["MODEL_PATH"] = f"{EXPERIMENT_DIR}/mlp_model_{idx}.pth"
 
         print(f"\nTraining model #{idx} for Ensemble")
-
-        train_mask, val_mask = create_image_based_split(
-            train_captions_path, len(X_data)
-        )
-        X_train, y_train = X_data[train_mask], y_data[train_mask]
-        X_val, y_val = X_data[val_mask], y_data[val_mask]
 
         # Bagging at 80% of training data
         seed = RANDOM_SEED + idx * 777
@@ -134,9 +139,6 @@ def main():
             num_workers=2,
         )
 
-        # Get unique validation targets and inverse indices for evaluation
-        y_val_unique, inverse_indices = torch.unique(y_val, dim=0, return_inverse=True)
-
         # Initialize the model
         model = MLP(
             input_dim=config_dict["INPUT_DIM"],
@@ -144,6 +146,7 @@ def main():
             output_dim=config_dict["OUTPUT_DIM"],
             num_layers=config_dict["NUM_LAYERS"],
             dropout=config_dict["DROPOUT"],
+            use_input_normalization=config_dict["USE_INPUT_NORMALIZATION"],
         ).to(DEVICE)
 
         # Start training
@@ -151,8 +154,8 @@ def main():
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
-            y_val_unique=y_val_unique,
-            gt_indices_val=inverse_indices,
+            y_val_unique=y_val_norm,
+            gt_indices_val=targets,
             parameters=config_dict,
         )
 
@@ -195,13 +198,14 @@ def main():
         train_captions_path,
         len(X_data),
     )
-    ensemble_pred = ensemble.predict(X_val, device=DEVICE)
 
+    # Get ensemble predictions
+    ensemble_pred = ensemble.predict(X_val, device=DEVICE)
     # Normalize embeddings for MRR computation
-    ensemble_pred_normalized = F.normalize(ensemble_pred, p=2, dim=-1)
-    y_val_normalized = F.normalize(y_val, p=2, dim=-1)
-    targets = torch.arange(len(y_val))
-    ensemble_mrr = mrr(ensemble_pred_normalized, y_val_normalized, targets)
+    ensemble_pred_normalized = F.normalize(ensemble_pred, p=2, dim=-1).cpu()
+    y_val_normalized = F.normalize(y_val, p=2, dim=-1).cpu()
+    targets = torch.arange(len(y_val)).cpu()
+    ensemble_mrr = mrr_batch_based(ensemble_pred_normalized, y_val_normalized, targets)
 
     # Print ensemble performance
     mean_individual = np.mean(performances)
@@ -217,7 +221,7 @@ def main():
     test_embds = torch.from_numpy(test_data["captions/embeddings"]).float().to(DEVICE)
 
     with torch.no_grad():
-        pred_embds = model(test_embds).cpu()
+        pred_embds = ensemble.predict(test_embds, device=DEVICE).cpu()
 
     generate_submission(
         test_data["captions/ids"], pred_embds, EXPERIMENT_SUBMISSION_PATH

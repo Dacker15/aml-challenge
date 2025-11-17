@@ -34,9 +34,14 @@ class MLP(nn.Module):
         hidden_dim=1024,
         num_layers=3,
         dropout=0.5,
+        use_input_normalization=False,
     ):
         super().__init__()
 
+        self.use_input_normalization = use_input_normalization
+        self.input_norm = (
+            nn.LayerNorm(input_dim) if use_input_normalization else nn.Identity()
+        )
         self.input_proj = nn.Linear(input_dim, hidden_dim)
         self.blocks = nn.Sequential(
             *[ResidualBlock(dim=hidden_dim, dropout=dropout) for _ in range(num_layers)]
@@ -46,7 +51,7 @@ class MLP(nn.Module):
         self.output_proj = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x):
-        x = self.input_proj(x)
+        x = self.input_proj(self.input_norm(x))
         x = self.blocks(x)
         x = self.final_norm(x)
         x = self.output_proj(x)

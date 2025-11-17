@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from src.training.mixup import mixup_data
 from src.training.model import MLP
-from src.testing.metrics import mrr
+from src.testing.metrics import mrr, mrr_batch_based
 
 
 def train_model(
@@ -43,6 +43,8 @@ def train_model(
     MODEL_PATH = parameters.get("MODEL_PATH", "best_model.pth")
 
     USE_ADAM = parameters.get("USE_ADAM", False)
+
+    USE_BATCH_MRR = parameters.get("USE_BATCH_MRR", False)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=LABEL_SMOOTHING)
     if USE_ADAM:
@@ -152,7 +154,14 @@ def train_model(
 
             # Compute MRR over the entire validation set
             epoch_val_predictions = torch.cat(epoch_val_predictions, dim=0)
-            epoch_mrr = mrr(epoch_val_predictions, y_val_unique, gt_indices_val)
+            if USE_BATCH_MRR:
+                epoch_mrr = mrr_batch_based(
+                    epoch_val_predictions.cpu(),
+                    y_val_unique.detach().cpu(),
+                    gt_indices_val.detach().cpu(),
+                )
+            else:
+                epoch_mrr = mrr(epoch_val_predictions, y_val_unique, gt_indices_val)
             all_val_mrr.append(epoch_mrr)
 
         print(
