@@ -49,6 +49,7 @@ def main():
         "VIRTUAL_BATCH_SIZE": VIRTUAL_BATCH_SIZE,
         "DEVICE": str(DEVICE),
         "ORIGINAL_DATASET_WEIGHT": 10.0,
+        "USE_MIXUP": True,
         "MIXUP_ALPHA": 0.2,
         "MODEL_PATH": MODEL_PATH,
         "TRAINING_PLOT_PATH": TRAINING_PLOT_PATH,

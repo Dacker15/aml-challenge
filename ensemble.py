@@ -42,6 +42,7 @@ def main():
         "INPUT_DIM": 1024,
         "HIDDEN_DIM": 1024,
         "OUTPUT_DIM": 1536,
+        "USE_MIXUP": False,
         "ACCUMULATION_STEPS": ACCUMULATION_STEPS,
         "VIRTUAL_BATCH_SIZE": VIRTUAL_BATCH_SIZE,
         "DEVICE": str(DEVICE),
@@ -101,9 +102,13 @@ def main():
         X_val, y_val = X_data[val_mask], y_data[val_mask]
 
         # Bagging at 80% of training data
+        seed = RANDOM_SEED + idx * 777
+
+        torch.manual_seed(seed)
+
         num_train_samples = X_train.shape[0]
         bag_size = int(0.8 * num_train_samples)
-        rng = np.random.default_rng(RANDOM_SEED + idx)
+        rng = np.random.default_rng(seed)
         bag_indices = rng.choice(num_train_samples, size=bag_size, replace=False)
 
         X_train_bag = X_train[bag_indices]
@@ -114,8 +119,20 @@ def main():
         # Create DataLoaders
         train_dataset = TensorDataset(X_train_bag, y_train_bag)
         val_dataset = TensorDataset(X_val, y_val)
-        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=BATCH_SIZE,
+            shuffle=True,
+            pin_memory=True,
+            num_workers=2,
+        )
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=BATCH_SIZE,
+            shuffle=False,
+            pin_memory=True,
+            num_workers=2,
+        )
 
         # Get unique validation targets and inverse indices for evaluation
         y_val_unique, inverse_indices = torch.unique(y_val, dim=0, return_inverse=True)

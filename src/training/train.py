@@ -36,6 +36,7 @@ def train_model(
     LABEL_SMOOTHING = parameters.get("LABEL_SMOOTHING", 0.1)
     TEMPERATURE = parameters.get("TEMPERATURE", 0.05)
     WEIGHT_DECAY = parameters.get("WEIGHT_DECAY", 1e-4)
+    USE_MIXUP = parameters.get("USE_MIXUP", False)
     MIXUP_ALPHA = parameters.get("MIXUP_ALPHA", 0.4)
     ACCUMULATION_STEPS = parameters.get("ACCUMULATION_STEPS", 1)
 
@@ -74,24 +75,43 @@ def train_model(
             optimizer.zero_grad()
 
             # Apply mixup to data and targets
-            X_batch, y_a, y_b, lam = mixup_data(X_batch, y_batch, alpha=MIXUP_ALPHA)
+            if USE_MIXUP:
+                X_batch, y_a, y_b, lam = mixup_data(X_batch, y_batch, alpha=MIXUP_ALPHA)
+            else:
+                y_a, y_b, lam = y_batch, y_batch, 1.0
 
             # 1. Get translated text (X) embeddings
             translated_X = model(X_batch)
 
-            # 2. Normalize both embeddings
-            translated_X = F.normalize(translated_X, p=2, dim=-1)
-            y_a = F.normalize(y_a, p=2, dim=-1)
-            y_b = F.normalize(y_b, p=2, dim=-1)
+            if USE_MIXUP:
+                translated_X = translated_X.float()
 
-            # 3. Compute logits and loss for both targets
-            logits_a = (translated_X @ y_a.T) / TEMPERATURE
-            logits_b = (translated_X @ y_b.T) / TEMPERATURE
-            labels = torch.arange(logits_a.shape[0]).to(DEVICE)
-            loss_a = (criterion(logits_a, labels) + criterion(logits_a.T, labels)) / 2.0
-            loss_b = (criterion(logits_b, labels) + criterion(logits_b.T, labels)) / 2.0
-            # 4. Combine losses using mixup lambda
-            loss = lam * loss_a + (1 - lam) * loss_b
+                # 2. Normalize both embeddings
+                translated_X = F.normalize(translated_X, p=2, dim=-1)
+                y_a = F.normalize(y_a, p=2, dim=-1)
+                y_b = F.normalize(y_b, p=2, dim=-1)
+
+                # 3. Compute logits and loss for both targets
+                logits_a = (translated_X @ y_a.T) / TEMPERATURE
+                logits_b = (translated_X @ y_b.T) / TEMPERATURE
+                labels = torch.arange(logits_a.shape[0]).to(DEVICE)
+                loss_a = (
+                    criterion(logits_a, labels) + criterion(logits_a.T, labels)
+                ) / 2.0
+                loss_b = (
+                    criterion(logits_b, labels) + criterion(logits_b.T, labels)
+                ) / 2.0
+                # 4. Combine losses using mixup lambda
+                loss = lam * loss_a + (1 - lam) * loss_b
+            else:
+                # 2. Normalize both embeddings
+                translated_X = F.normalize(translated_X, p=2, dim=-1)
+                y_batch = F.normalize(y_batch, p=2, dim=-1)
+
+                # 3. Compute logits and loss
+                logits = (translated_X @ y_batch.T) / TEMPERATURE
+                labels = torch.arange(logits.shape[0]).to(DEVICE)
+                loss = (criterion(logits, labels) + criterion(logits.T, labels)) / 2.0
 
             loss.backward()
             optimizer.step()
